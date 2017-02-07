@@ -16,6 +16,8 @@ import pandas as pd
 import pickle
 
 def constructPriceMatrix(df):
+    df['strike_price'] = df['strike_price'] / 1000
+
     # Obtain x-axis Strike and y-axis Time-to-Maturity
     strikes = df["strike_price"].unique()
     strikes.sort()
