@@ -2,7 +2,7 @@
 """
 Created on Wed Jan 25 14:28:49 2017
 
-@author: kcfef
+@author: Yao Dong Yu
 
 Description: re-organize option data into daily price matrix
 
@@ -11,7 +11,6 @@ Require: outputs of cleanData.py:
              raw_put.csv
 """
 
-import numpy as np
 import pandas as pd
 import pickle
 
@@ -38,6 +37,18 @@ def fillPriceDf(row_data, priceDf):
 
     priceDf.ix[idx, col] = (row_data["best_bid"] + row_data["best_offer"]) / 2
 
+# Clean price matrix based on method of Bakshi, Cao and Chen (2000)
+def cleanPriceMatrix(priceDf):
+    # Only use contracts with maturity time greater than 6 days
+    out_df = priceDf.ix[priceDf.index > 6, :]
+    # remove all entries with price less than $3/8
+    out_df = out_df[out_df >= 3/8]
+
+    #clean up
+    out_df.dropna(axis=(0, 1), how='all', inplace=True)
+
+    return out_df
+
 for option_type in ["call", "put"]:
     # Read clean data
     raw_data = pd.read_csv("./data/raw_" + option_type + ".csv")
@@ -46,7 +57,10 @@ for option_type in ["call", "put"]:
     # For each date, create price matrix of time to maturity vs. strike
     for _date, _df_of_date in raw_data.groupby(["date"]):
         print(_date)
-        map_priceDfs[_date] = constructPriceMatrix(_df_of_date)
+        _p_mx = constructPriceMatrix(_df_of_date)
+        _p_mx = cleanPriceMatrix(_p_mx)
+        if _p_mx.size > 0:
+            map_priceDfs[_date] = _p_mx.copy()
 
     with open('./data/priceDfsMap_' + option_type + '.pickle', 'wb') as fp:
         pickle.dump(map_priceDfs, fp)
