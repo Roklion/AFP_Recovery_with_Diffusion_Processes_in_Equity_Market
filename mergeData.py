@@ -2,7 +2,7 @@
 """
 Created on Thu Jan 26 17:41:15 2017
 
-@author: kcfef
+@author: Yao Dong Yu
 
 Description: merge daily price matrix within a certain time period, and separate
                  by index leve

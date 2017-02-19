@@ -2,16 +2,21 @@
 """
 Created on Mon Feb  6 16:10:22 2017
 
-@author: kcfef
+@author: Yao Dong Yu
+
+Description: fit data to polynomial option price surface against strike and
+                time to maturity
+
+Require: outputs of reshapeData.py:
+             priceDfsMap_call.pickle
+             priceDfsMap_put.pickle
 """
 
 import numpy as np
-import pandas as pd
 from sklearn.preprocessing import PolynomialFeatures
 from scipy.optimize import minimize
 import matplotlib.pyplot as plt
 from matplotlib import cm
-from mpl_toolkits.mplot3d import Axes3D
 
 # Global plot settings
 plt.rcParams["figure.figsize"] = [10, 8]
@@ -21,8 +26,16 @@ plt.rcParams["legend.borderaxespad"] = 0
 T_degree = 2
 K_degree = 5
 
-def polyK2ndCons(params, Xs_K_2nd, factor_K_2nd):
-    return params * factor_K_2nd * Xs_K_2nd
+def polyK2ndCons(params, factor_K_2nd, power_K_2nd, t, K):
+    t_degree_2nd = np.max([_pow[0] for _pow in power_K_2nd])
+    K_degree_2nd = np.max([_pow[1] for _pow in power_K_2nd])
+    mx_c_2nd = np.matrix([[0] * (K_degree_2nd + 1)] * (t_degree_2nd + 1))
+    for _idx, _pow in enumerate(power_K_2nd):
+        mx_c_2nd[_pow[0], _pow[1]] = params[_idx] * factor_K_2nd[_idx]
+    # compute plane
+    p_2nd_mesh = np.polynomial.polynomial.polyval2d(t, K, mx_c_2nd)
+
+    return np.min(p_2nd_mesh)
 
 def polyObjective(params, Xs, Y):
     return np.square((params * Xs).sum(axis=1) - Y).sum()
@@ -54,32 +67,35 @@ def constructPolynomial(df_p_mx):
                                 for _power in power_K_2nd])
     Xs_K_2nd = np.array([_x[power_K_2nd_idx] for _x in expanded_Xs_all])
 
-    return expanded_Xs, Y, factor_K_2nd, Xs_K_2nd, powers, Xs
+    return expanded_Xs, Y, factor_K_2nd, power_K_2nd, powers, Xs
 
 def fitPolynomial(df_p_mx):
     # standardize variables
-    df_p_mx.columns /= 400
+    df_p_mx.columns = df_p_mx.columns / 500
     df_p_mx.index = np.sqrt(df_p_mx.index)
 
-    Xs, Y, factor_K_2nd, Xs_K_2nd, powers, origX = constructPolynomial(df_p_mx)
+    Xs, Y, factor_K_2nd, power_K_2nd, powers, origX = constructPolynomial(df_p_mx)
     t_orig, K_orig = zip(*origX)
+
+    t = np.sqrt(np.linspace(0, 1000, 300))
+    K = np.linspace(400, 5000, 300) / 500
+    t_mesh, K_mesh = np.meshgrid(t, K)
 
 #    res = np.linalg.lstsq(Xs, Y)
 #    res_params = res[0]
     # Solve minimization problem with 2nd order constraint (curvature w.r.t. K > 0)
     #params0 = (15.,) * Xs.shape[1]
-    np.random.seed(1)
+
     params0 = np.random.rand(len(powers)) * 2000 - 1000
     params0 = (100, -10, 2200, 1.3, -75, -970, 0.55, 43, 154, -0.52, -7, -8, 0.099, 0.39, -0.0056, 1, 1, 1)
-    res = minimize(polyObjective, params0, method='BFGS', args=(Xs, Y))
+    res = minimize(polyObjective, params0, method='SLSQP', args=(Xs, Y),
+                   constraints={'type':'ineq',
+                                'fun':lambda _param: polyK2ndCons(_param, factor_K_2nd, power_K_2nd, t_mesh, K_mesh)})
 
     res_params = res.x
 
-    t = np.sqrt(np.linspace(0, 1000, 300))
-    K = np.linspace(400, 3000, 300) / 400
-    t_mesh, K_mesh = np.meshgrid(t, K)
     # Coefficients
-    mx_c = np.matrix([[None] * (K_degree + 1)] * (T_degree + 1))
+    mx_c = np.matrix([[0] * (K_degree + 1)] * (T_degree + 1))
     for _idx, _pow in enumerate(powers):
         mx_c[_pow[0], _pow[1]] = res_params[_idx]
     # compute plane

@@ -2,7 +2,7 @@
 """
 Created on Wed Jan 25 17:51:42 2017
 
-@author: kcfef
+@author: Yao Dong Yu
 
 Description: utility function to load price matrix of a specific day
                 and option type

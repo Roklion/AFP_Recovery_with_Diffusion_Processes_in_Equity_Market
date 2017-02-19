@@ -2,7 +2,7 @@
 """
 Created on Wed Jan 25 14:28:49 2017
 
-@author: kcfef
+@author: Yao Dong Yu
 
 Description: clean up raw S&P 500 index and option data
 
@@ -10,7 +10,6 @@ Require: S&P 500 option data.csv
          SP500.csv
 """
 
-import numpy as np
 import pandas as pd
 
 raw_data = pd.read_csv("./data/S&P 500 option data.csv",
