@@ -56,6 +56,7 @@ for(f in 1:length(input.files)) {
             res <- locPolSmootherC(valid_Ks, valid_prices, x_c, bw, K_order, EpaK)
             # Truncate tails where convexity condition does not meet
             res <- res[res$beta2 >= 0, ]
+            # Remove NA's
             res <- res[apply(is.na(res), c(1), sum) == 0, ]
             res$t <- t
             

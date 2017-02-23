@@ -17,6 +17,7 @@ from sklearn.preprocessing import PolynomialFeatures
 from scipy.optimize import minimize
 import matplotlib.pyplot as plt
 from matplotlib import cm
+from mpl_toolkits.mplot3d import Axes3D
 
 # Global plot settings
 plt.rcParams["figure.figsize"] = [10, 8]
