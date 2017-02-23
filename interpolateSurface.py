@@ -152,7 +152,10 @@ def plotSurface(x, y, z, names):
     x_mesh, y_mesh = np.meshgrid(x, y)
     fig = plt.figure()
     ax = fig.add_subplot(111, projection='3d')
-    ax.plot_surface(x_mesh, y_mesh, z.T, cmap=cm.coolwarm)
+    try:
+        ax.plot_surface(x_mesh, y_mesh, z, cmap=cm.coolwarm)
+    except:
+        ax.plot_surface(x_mesh, y_mesh, z.T, cmap=cm.coolwarm)
 
     ax.set_xlabel(names[0])
     ax.set_ylabel(names[1])
