@@ -27,6 +27,20 @@ except NameError:
     with open('./data/priceDfsMap_put.pickle', 'rb') as fp:
         date_priceDf_map_put = pickle.load(fp)
 
+def getDates(option_type='call'):
+    global date_priceDf_map_call
+    global date_priceDf_map_put
+
+    if option_type == 'call':
+        date_priceDf_map = date_priceDf_map_call
+    else:
+        date_priceDf_map = date_priceDf_map_put
+
+    dates = list(date_priceDf_map.keys())
+    dates.sort()
+
+    return dates
+
 #==============================================================================
 # loadDataOfDate
 #
