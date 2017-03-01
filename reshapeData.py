@@ -14,9 +14,7 @@ Require: outputs of cleanData.py:
 import pandas as pd
 import pickle
 
-def constructPriceMatrix(df):
-    df['strike_price'] = df['strike_price'] / 1000
-
+def constructPriceMatrix(df, fill_func):
     # Obtain x-axis Strike and y-axis Time-to-Maturity
     strikes = df["strike_price"].unique()
     strikes.sort()
@@ -27,7 +25,7 @@ def constructPriceMatrix(df):
     df_mkt_price = pd.DataFrame(index=time_to_maturity, columns=strikes)
 
     # Fill in data
-    df.apply(lambda _row: fillPriceDf(_row, df_mkt_price), axis=1)
+    df.apply(lambda _row: fill_func(_row, df_mkt_price), axis=1)
 
     return df_mkt_price
 
@@ -36,6 +34,12 @@ def fillPriceDf(row_data, priceDf):
     idx = row_data["days_to_mature"]
 
     priceDf.ix[idx, col] = (row_data["best_bid"] + row_data["best_offer"]) / 2
+
+def fillPriceDf_sim(row_data, priceDf):
+    col = row_data["strike_price"]
+    idx = row_data["days_to_mature"]
+
+    priceDf.ix[idx, col] = (row_data["option_price"])
 
 # Clean price matrix based on method of Bakshi, Cao and Chen (2000)
 def cleanPriceMatrix(priceDf):
@@ -49,21 +53,24 @@ def cleanPriceMatrix(priceDf):
 
     return out_df
 
-for option_type in ["call", "put"]:
-    # Read clean data
-    raw_data = pd.read_csv("./data/raw_" + option_type + ".csv")
+def reshapeData_main():
+    for option_type in ["call", "put"]:
+        # Read clean data
+        raw_data = pd.read_csv("./data/raw_" + option_type + ".csv")
 
-    map_priceDfs = dict()
-    # For each date, create price matrix of time to maturity vs. strike
-    for _date, _df_of_date in raw_data.groupby(["date"]):
-        print(_date)
-        _p_mx = constructPriceMatrix(_df_of_date)
-        _p_mx = cleanPriceMatrix(_p_mx)
-        if _p_mx.size > 0:
-            map_priceDfs[_date] = _p_mx.copy()
+        map_priceDfs = dict()
+        # For each date, create price matrix of time to maturity vs. strike
+        for _date, _df_of_date in raw_data.groupby(["date"]):
+            print(_date)
+            # Real data has strike price * 1000
+            _df_of_date['strike_price'] = _df_of_date['strike_price'] / 1000
+            _p_mx = constructPriceMatrix(_df_of_date, fillPriceDf)
+            _p_mx = cleanPriceMatrix(_p_mx)
+            if _p_mx.size > 0:
+                map_priceDfs[_date] = _p_mx.copy()
 
-    with open('./data/priceDfsMap_' + option_type + '.pickle', 'wb') as fp:
-        pickle.dump(map_priceDfs, fp)
+        with open('./data/priceDfsMap_' + option_type + '.pickle', 'wb') as fp:
+            pickle.dump(map_priceDfs, fp)
 
 #==============================================================================
 # Example of loading data:

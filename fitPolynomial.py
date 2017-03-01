@@ -7,7 +7,7 @@ Created on Mon Feb  6 16:10:22 2017
 Description: fit data to polynomial option price surface against strike and
                 time to maturity
 
-Require: outputs of reshapeData.py:
+Require: outputs of reshapeData.py: reshapeData_main()
              priceDfsMap_call.pickle
              priceDfsMap_put.pickle
 """
