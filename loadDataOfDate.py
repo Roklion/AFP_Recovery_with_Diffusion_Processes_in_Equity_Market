@@ -7,7 +7,7 @@ Created on Wed Jan 25 17:51:42 2017
 Description: utility function to load price matrix of a specific day
                 and option type
 
-Require: outputs of reshapeData.py:
+Require: outputs of reshapeData.py: reshapeData_main()
              priceDfsMap_call.pickle
              priceDfsMap_put.pickle
 """
