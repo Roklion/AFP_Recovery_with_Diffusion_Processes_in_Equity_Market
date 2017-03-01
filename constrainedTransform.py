@@ -10,7 +10,7 @@ Description: fit data to option price surface against strike and
 
              Assume no discount for now
 
-Require: outputs of reshapeData.py:
+Require: outputs of reshapeData.py: reshapeData_main()
              priceDfsMap_call.pickle
              priceDfsMap_put.pickle
 """

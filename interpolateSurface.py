@@ -12,7 +12,7 @@ Description: fit data to option price surface against strike and
 
 Require: outputs of smooth_K.R:
              local_poly/ms_call_*.csv
-             local_poly/ms_put_*.csv
+             (not generated) local_poly/ms_put_*.csv
 """
 
 import os
@@ -59,16 +59,14 @@ def formatPoly_main(option_type='call'):
         with open(poly_out_path + 'surface_poly_' + option_type + _date_str + '.pickle', 'wb') as fp:
             pickle.dump(d_price_poly, fp)
 
-def obtainSurface(ts, Ks, date, option_type='call'):
-    try:
-        with open(poly_out_path + 'surface_poly_' + option_type + '_' + str(date) + '.pickle', 'rb') as fp:
-            d_poly = pickle.load(fp)
-    except FileNotFoundError:
-        print("No available " + option_type + " option price for date " + str(date))
-        return
+def obtainSurface_impl(d_poly, Ks, ts, option_type='call'):
+    if ts is None:
+        ts = np.array(list(d_poly.keys()))
+        ts.sort()
+    else:
+        ts = np.array(ts)
+        ts.sort()
 
-    ts = np.array(ts)
-    ts.sort()
     Ks = np.array(Ks)
     Ks.sort()
 
@@ -101,7 +99,7 @@ def obtainSurface(ts, Ks, date, option_type='call'):
             if curr_i == 0:
                 _t0 = _t
                 _t1 = all_ts[curr_i+1]
-            elif curr_i == len(all_ts):
+            elif curr_i == len(all_ts)-1:
                 _t0 = all_ts[curr_i-1]
                 _t1 = _t
             else:
@@ -130,7 +128,7 @@ def obtainSurface(ts, Ks, date, option_type='call'):
         interp_x = Ks[np.all([Ks >= min(_x), Ks <= max(_x)], axis=0)]
 
         # create interpolation function, between points, linear is ok
-        _y_Vt = np.array((_poly1['V'] - _poly0['V']) / (_t1 - _t0))
+        _y_Vt = np.array((_poly1['V'] - _poly0['V']) / ((_t1 - _t0) / 365))
         interp_Vt = interp1d(_x, _y_Vt)
         Vt[_i, :] = np.concatenate((extrap_l, interp_Vt(interp_x), extrap_r))
 
@@ -146,19 +144,65 @@ def obtainSurface(ts, Ks, date, option_type='call'):
         interp_Vkk = interp1d(_x, _y_Vkk)
         Vkk[_i, :] = np.concatenate((extrap_l, interp_Vkk(interp_x), extrap_r))
 
-    return V, Vk, Vkk, Vt, ts, Ks
+    # Reshape
+    t_index_year = ts / 365
+    df_V = pd.DataFrame(V, index=t_index_year, columns=Ks)
+    df_Vk = pd.DataFrame(Vk, index=t_index_year, columns=Ks)
+    df_Vkk = pd.DataFrame(Vkk, index=t_index_year, columns=Ks)
+    df_Vt = pd.DataFrame(Vt, index=t_index_year, columns=Ks)
 
-def plotSurface(x, y, z, names):
-    x_mesh, y_mesh = np.meshgrid(x, y)
+    df_V = reduceAllZeros(df_V)
+    df_Vk = reduceAllZeros(df_Vk)
+    df_Vkk = reduceAllZeros(df_Vkk)
+    df_Vt = reduceAllZeros(df_Vt)
+
+    # common index of K and t
+    t_inters = df_V.index.intersection(df_Vk.index).intersection(df_Vkk.index).intersection(df_Vt.index)
+    K_inters = df_V.columns.intersection(df_Vk.columns).intersection(df_Vkk.columns).intersection(df_Vt.columns)
+
+#    # keep square shape
+#    # empirically, smaller t index and two tails of K have less data
+#    min_size = min(len(t_inters), len(K_inters))
+#    t_inters = t_inters[-min_size:]
+#    K_n_extra = len(K_inters) - min_size
+#    if K_n_extra is not 0:
+#        K_i_left = K_n_extra - K_n_extra // 2
+#        K_i_right = K_n_extra // 2
+#        K_inters = K_inters[K_i_left:-(K_i_right+1)]
+
+    # Reformat dataframes to common indexes
+    df_V = df_V.ix[t_inters, K_inters]
+    df_Vk = df_Vk.ix[t_inters, K_inters]
+    df_Vkk = df_Vkk.ix[t_inters, K_inters]
+    df_Vt = df_Vt.ix[t_inters, K_inters]
+
+    return df_V, df_Vk, df_Vkk, df_Vt, t_inters, K_inters
+
+def obtainSurface(date, Ks, ts=None, option_type='call'):
+    try:
+        with open(poly_out_path + 'surface_poly_' + option_type + '_' + str(date) + '.pickle', 'rb') as fp:
+            d_poly = pickle.load(fp)
+    except FileNotFoundError:
+        print("No available " + option_type + " option price for date " + str(date))
+        return
+
+    return obtainSurface_impl(d_poly, Ks, ts, option_type)
+
+def reduceAllZeros(df):
+    df = df.ix[:, ~(df == 0).all(axis=0)]
+    df = df.ix[~(df == 0).all(axis=1), :]
+
+    return df
+
+def plotSurface(x, y, z, names, save=False, save_to="./_temp.png"):
+    x_mesh, y_mesh = np.meshgrid(np.array(x).astype(float), np.array(y).astype(float))
     fig = plt.figure()
     ax = fig.add_subplot(111, projection='3d')
-    try:
-        ax.plot_surface(x_mesh, y_mesh, z, cmap=cm.coolwarm)
-    except:
-        ax.plot_surface(x_mesh, y_mesh, z.T, cmap=cm.coolwarm)
+
+    ax.plot_surface(x_mesh, y_mesh, z.T, cmap=cm.coolwarm)
 
     ax.set_xlabel(names[0])
     ax.set_ylabel(names[1])
     ax.set_zlabel(names[2])
-    #ax.set_zlim(-0.00001, 0.00001)
+
     plt.show()
