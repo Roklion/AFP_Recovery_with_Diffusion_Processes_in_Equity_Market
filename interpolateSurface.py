@@ -25,6 +25,8 @@ import matplotlib.pyplot as plt
 from matplotlib import cm
 from mpl_toolkits.mplot3d import Axes3D
 
+import loadDataOfDate as priceMapLoader
+
 # Global plot settings
 plt.rcParams["figure.figsize"] = [10, 8]
 plt.rcParams["legend.fontsize"] = 15
@@ -39,10 +41,10 @@ def formatPoly(df_poly):
 
     price_poly = dict()
     for _t, _df in df_poly.groupby(['t']):
-        _df_temp = pd.DataFrame(index=all_Ks, columns=['V', 'Vk', 'Vkk'])
+        _df_temp = pd.DataFrame(index=all_Ks, columns=['Price', 'V', 'Vk', 'Vkk'])
         _df_temp.fillna(0, inplace=True)
         #price_poly[_t]
-        _df_temp.ix[_df['x'], :] = _df[['beta2', 'beta3', 'beta4']].values
+        _df_temp.ix[_df['x'], :] = _df[['beta0', 'beta2', 'beta3', 'beta4']].values
 
         price_poly[_t] = _df_temp
 
@@ -83,6 +85,7 @@ def obtainSurface_impl(d_poly, Ks, ts, option_type='call'):
         print("t out of upper bound, cast to maximum t: ", t_max)
         ts = ts[ts <= t_max]
 
+    Price = np.array([[np.nan] * len(Ks)] * len(ts))
     V = np.array([[0.] * len(Ks)] * len(ts))
     Vk = np.array([[0.] * len(Ks)] * len(ts))
     Vkk = np.array([[0.] * len(Ks)] * len(ts))
@@ -124,13 +127,19 @@ def obtainSurface_impl(d_poly, Ks, ts, option_type='call'):
 
         # all extrapolation should be 0 for V, Vk or Vkk
         extrap_l = np.array([0] * len(Ks[Ks < min(_x)]))
+        extrap_l_nan = np.array([np.nan] * len(Ks[Ks < min(_x)]))
         extrap_r = np.array([0] * len(Ks[Ks > max(_x)]))
+        extrap_r_nan = np.array([np.nan] * len(Ks[Ks > max(_x)]))
         interp_x = Ks[np.all([Ks >= min(_x), Ks <= max(_x)], axis=0)]
 
         # create interpolation function, between points, linear is ok
         _y_Vt = np.array((_poly1['V'] - _poly0['V']) / ((_t1 - _t0) / 365))
         interp_Vt = interp1d(_x, _y_Vt)
         Vt[_i, :] = np.concatenate((extrap_l, interp_Vt(interp_x), extrap_r))
+
+        _y_Price = np.array(_poly['Price'])
+        interp_Price = interp1d(_x, _y_Price)
+        Price[_i, :] = np.concatenate((extrap_l_nan, interp_Price(interp_x), extrap_r_nan))
 
         _y_V = np.array(_poly['V'])
         interp_V = interp1d(_x, _y_V)
@@ -146,11 +155,13 @@ def obtainSurface_impl(d_poly, Ks, ts, option_type='call'):
 
     # Reshape
     t_index_year = ts / 365
+    df_Price = pd.DataFrame(Price, index=ts, columns=Ks)
     df_V = pd.DataFrame(V, index=t_index_year, columns=Ks)
     df_Vk = pd.DataFrame(Vk, index=t_index_year, columns=Ks)
     df_Vkk = pd.DataFrame(Vkk, index=t_index_year, columns=Ks)
     df_Vt = pd.DataFrame(Vt, index=t_index_year, columns=Ks)
 
+    # Price do not need to be reduced
     df_V = reduceAllZeros(df_V)
     df_Vk = reduceAllZeros(df_Vk)
     df_Vkk = reduceAllZeros(df_Vkk)
@@ -176,7 +187,7 @@ def obtainSurface_impl(d_poly, Ks, ts, option_type='call'):
     df_Vkk = df_Vkk.ix[t_inters, K_inters]
     df_Vt = df_Vt.ix[t_inters, K_inters]
 
-    return df_V, df_Vk, df_Vkk, df_Vt, t_inters, K_inters
+    return df_Price, df_V, df_Vk, df_Vkk, df_Vt, t_inters, K_inters
 
 def obtainSurface(date, Ks, ts=None, option_type='call'):
     try:
@@ -193,6 +204,52 @@ def reduceAllZeros(df):
     df = df.ix[~(df == 0).all(axis=1), :]
 
     return df
+
+def fitting_errors(option_type='call'):
+    dates = priceMapLoader.getDates(option_type)
+    err_metrics = pd.DataFrame(index=dates, columns=['N', 'MSE', 'RMSE', 'MAPE'])
+
+    for _date in dates:
+        df_real = priceMapLoader.loadDataOfDate(_date, option_type)
+        df_fitted = obtainSurface(_date, df_real.columns, df_real.index, option_type)[0]
+        # cast to interpolated area
+        df_real = df_real.ix[df_fitted.index, df_fitted.columns]
+
+        Ks = np.array(df_real.columns).astype(float)
+        MSE = 0
+        MAPE = 0
+        count = 0
+        for _t, _row in df_real.iterrows():
+            K_idx = Ks[_row.notnull()]
+            err = df_fitted.ix[_t, K_idx] - _row[K_idx]
+            count += err.notnull().sum()
+            err = err[err.notnull()]
+            MSE = MSE + np.sum(np.square(err))
+            MAPE = MAPE + np.sum(np.abs(err) / df_real.ix[_t, K_idx])
+
+        err_metrics.ix[_date, 'MSE'] = MSE / count
+        err_metrics.ix[_date, 'RMSE'] = np.sqrt(err_metrics.ix[_date, 'MSE'])
+        err_metrics.ix[_date, 'MAPE'] = MAPE / count
+        err_metrics.ix[_date, 'N'] = count
+
+    err_metrics.to_csv('./data/error_metrics_' + option_type + '.csv')
+
+    return err_metrics
+
+def plot_errors(option_type='call'):
+    df_err = pd.read_csv('./data/error_metrics_' + option_type + '.csv', index_col=0)
+    dates = pd.to_datetime(df_err.index)
+
+    fig, axarr = plt.subplots(3, sharex=True)
+    axarr[0].plot(dates, df_err['MSE'])
+    axarr[0].set_title('Mean Squared Error of interpolated surface')
+    axarr[1].plot(dates, df_err['RMSE'])
+    axarr[1].set_title('Root Mean Squared Error of interpolated surface')
+    axarr[2].plot(dates, df_err['MAPE'])
+    axarr[2].set_title('Mean Absolute Percentage Error of interpolated surface')
+
+    fig.autofmt_xdate()
+    plt.show()
 
 def plotSurface(x, y, z, names, save=False, save_to="./_temp.png"):
     x_mesh, y_mesh = np.meshgrid(np.array(x).astype(float), np.array(y).astype(float))

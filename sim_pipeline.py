@@ -14,7 +14,6 @@ Require: simulated in data in .csv format, with last least the following columns
 import numpy as np
 import pandas as pd
 import pickle
-import sys
 # Import R function
 import rpy2.robjects as ro
 ro.r('source("./smooth_K_impl.R")')
@@ -27,7 +26,7 @@ import continuous_recovery as recovery_cont
 data_path = "./data/sim_pipline_output/"
 
 def pipeline_reshape(filename, index_val):
-    df_data = pd.DataFrame(data_path + filename)
+    df_data = pd.read_csv(data_path + filename + ".csv")
     df_p_mx = reshapeData.constructPriceMatrix(df_data, reshapeData.fillPriceDf_sim)
     df_p_mx = reshapeData.cleanPriceMatrix(df_p_mx)
 
