@@ -10,7 +10,8 @@ Description: fit data to option price surface against strike and
 
              Assume no discount for now
 
-Require: outputs of reshapeData.py: reshapeData_main()
+Require: outputs of reshapeData.py: reshapeData_main(), mergeCallPut_main()
+             priceDfsMap_merged_call.pickle
              priceDfsMap_call.pickle
              priceDfsMap_put.pickle
 """
@@ -68,12 +69,13 @@ def transformData(df_p_mx):
 
         res = minimize(transformObj, m0, args=(_prices), method='SLSQP',
                        bounds=bnds, constraints=cons)
+        #print(res.fun)
 
         df_ms.ix[_t, _row_clean.index] = res.x
 
     return df_ms
 
-def transform_main(option_type='call'):
+def transform_main(option_type='merged_call'):
     dates = priceMapLoader.getDates(option_type)
 
     for _date in dates:
