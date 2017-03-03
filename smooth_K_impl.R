@@ -8,7 +8,7 @@
 ###############################################################################
 library(locpol, lib.loc = "C:/Users/kcfef/Documents/R/win-library/3.3")
 
-smooth_K_impl <- function(in.path, out.path, K_step, K_order) {
+smooth_K_impl <- function(in.path, out.path, K_step, K_order, bandwidth=400) {
     
     df = read.csv(in.path, header=TRUE, check.names=FALSE)
     
@@ -33,13 +33,12 @@ smooth_K_impl <- function(in.path, out.path, K_step, K_order) {
         if(length(valid_Ks) > 10) {
             x_c <- seq(min(valid_Ks), max(valid_Ks), by=K_step)
             
+            # Hard code bandwidth
             #bw <- thumbBw(valid_Ks, valid_prices, K_order, EpaK)
             #bw <- pluginBw(valid_Ks, valid_prices, K_order, EpaK)
             #print(bw)
-            # Hard code bandwidth
-            bw <- 400
             
-            res <- locPolSmootherC(valid_Ks, valid_prices, x_c, bw, K_order, EpaK)
+            res <- locPolSmootherC(valid_Ks, valid_prices, x_c, bandwidth, K_order, EpaK)
             # Truncate tails where convexity condition does not meet
             res <- res[res$beta2 >= 0, ]
             # Remove NA's
