@@ -8,7 +8,7 @@
 ###############################################################################
 library(locpol, lib.loc = "C:/Users/kcfef/Documents/R/win-library/3.3")
 
-smooth_K_impl <- function(in.path, out.path, K_step, K_order, bandwidth=400) {
+smooth_K_impl <- function(in.path, out.path, K_step, K_order, bandwidth=400, fix_violation=TRUE) {
     
     df = read.csv(in.path, header=TRUE, check.names=FALSE)
     
@@ -39,8 +39,10 @@ smooth_K_impl <- function(in.path, out.path, K_step, K_order, bandwidth=400) {
             #print(bw)
             
             res <- locPolSmootherC(valid_Ks, valid_prices, x_c, bandwidth, K_order, EpaK)
-            # Truncate tails where convexity condition does not meet
-            res <- res[res$beta2 >= 0, ]
+            if(fix_violation == TRUE) {
+                # Truncate tails where convexity condition does not meet
+                res <- res[res$beta2 >= 0, ]
+            }
             # Remove NA's
             res <- res[apply(is.na(res), c(1), sum) == 0, ]
             res$t <- t

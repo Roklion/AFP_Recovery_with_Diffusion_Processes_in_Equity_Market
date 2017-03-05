@@ -34,7 +34,7 @@ def monoCons2(ms):
 def convexCons(ms, xs):
     return (ms[2] - ms[1]) / (xs[2] - xs[1]) - (ms[1] - ms[0]) / (xs[1] - xs[0])
 
-def transformData(df_p_mx):
+def transformData(df_p_mx, no_transform=False):
     # intermediate data m's
     df_ms = pd.DataFrame(index=df_p_mx.index, columns=df_p_mx.columns)
 
@@ -50,34 +50,52 @@ def transformData(df_p_mx):
         if _N < 10:
             continue
 
-        # Initialize transformed values to be same as original option prices
-        m0 = _prices
-        # create list of constraints
-        # first, simplified monotonically decreasing constraints
-        cons = list()
-        cons.append({'type':'ineq',
-                     'fun' :lambda _ms: monoCons1(_ms, _strikes)})
-        cons.append({'type':'ineq',
-                     'fun' :lambda _ms: monoCons2(_ms)})
-        # Then, append convexity constraints at each observation
-        for _i in range(_N-2):
-            cons.append({'type':'ineq',
-                         'fun' :lambda _ms: convexCons(_ms[_i:_i+3], _strikes[_i:_i+3])})
+        if no_transform:
+            df_ms.ix[_t, _row_clean.index] = _prices
 
-        # All prices must be greater than 0
-        bnds = ((0, None), ) * _N
+        else:
+            # Initialize transformed values to be same as original option prices
+            m0 = _prices
 
-        res = minimize(transformObj, m0, args=(_prices), method='SLSQP',
-                       bounds=bnds, constraints=cons)
-        #print(res.fun)
+            # All prices must be greater than 0
+            bnds = ((0, None), ) * _N
 
-        df_ms.ix[_t, _row_clean.index] = res.x
+            if no_constraint:
+                # create list of constraints
+                # first, simplified monotonically decreasing constraints
+                cons = list()
+                cons.append({'type':'ineq',
+                             'fun' :lambda _ms: monoCons1(_ms, _strikes)})
+                cons.append({'type':'ineq',
+                             'fun' :lambda _ms: monoCons2(_ms)})
+                # Then, append convexity constraints at each observation
+                for _i in range(_N-2):
+                    cons.append({'type':'ineq',
+                                 'fun' :lambda _ms: convexCons(_ms[_i:_i+3], _strikes[_i:_i+3])})
+
+                res = minimize(transformObj, m0, args=(_prices), method='SLSQP',
+                               bounds=bnds, constraints=cons)
+
+            #print(res.fun)
+
+            df_ms.ix[_t, _row_clean.index] = res.x
 
     return df_ms
 
-def transform_main(option_type='merged_call'):
+def transform_main(option_type='merged_call', no_transform=False, date_range=None):
     dates = priceMapLoader.getDates(option_type)
+    if date_range is not None:
+        dates = np.array([_date for _date in dates
+                          if _date >= date_range[0] and _date <= date_range[1]])
+        dates.sort()
 
     for _date in dates:
-        df_ms = transformData(priceMapLoader.loadDataOfDate(_date, option_type))
-        df_ms.to_csv('./data/transformed/ms_' + option_type + '_' + str(_date) + '.csv')
+        df_ms = transformData(priceMapLoader.loadDataOfDate(_date, option_type),
+                              no_transform)
+
+        name_str = './data/transformed/'
+        if no_transform:
+            name_str += 'no_trans_'
+        name_str += 'ms_' + option_type + '_' + str(_date) + '.csv'
+
+        df_ms.to_csv(name_str)

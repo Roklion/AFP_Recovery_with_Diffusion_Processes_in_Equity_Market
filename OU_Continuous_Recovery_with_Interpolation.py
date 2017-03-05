@@ -15,12 +15,8 @@ import pandas as pd
 import numpy as np
 from matplotlib import pyplot as plt
 from scipy.stats import norm
-from scipy.optimize import minimize
 from numpy.matlib import repmat
 from sklearn import datasets, linear_model
-from matplotlib import pyplot as plt
-from mpl_toolkits.mplot3d import Axes3D
-from matplotlib import cm
 
 import sim_pipeline as sim
 
@@ -92,7 +88,7 @@ S0=1951
 K=np.arange(50.0,4000.0,5.)
 T=np.arange(0.1,2.0,0.1)
 
-for _i in np.arange(10):
+for _i in np.arange(50):
     np.random.seed(_i)
 
     for eta in [0.5, 0.3, 0.1]:
@@ -102,10 +98,23 @@ for _i in np.arange(10):
         filename = "sim_test_S"+str(S0)+"_eta"+str(eta)+'_'+str(_i)
         data.to_csv(data_path + filename + ".csv")
 
-        recovered = sim.pipeline_run(filename, S0, delta=1500, bandwidth=400)
+        recovered, m_hat, _rho = sim.pipeline_run(filename, S0, delta=1500, bandwidth=300)
         if recovered is not None:
+            print("rho=" + str(_rho))
+
             recovered.to_csv(data_path + filename + "_recovered.csv")
             recovered.T.plot()
+            plt.show()
+
+            m_hat.to_csv(data_path + filename + "_mhat.csv")
+            m_hat.plot()
+            plt.show()
+
+            delta_K = recovered.columns[1] - recovered.columns[0]
+            wts = np.matlib.repmat((recovered * delta_K).sum(axis=1), recovered.shape[1], 1).T
+            adj_recovered = np.divide(recovered, wts)
+            adj_recovered.to_csv(data_path + filename + "_adj_recovered.csv")
+            adj_recovered.T.plot()
             plt.show()
 
 

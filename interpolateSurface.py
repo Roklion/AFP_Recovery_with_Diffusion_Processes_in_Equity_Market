@@ -27,7 +27,6 @@ import matplotlib.pyplot as plt
 from matplotlib import cm
 from mpl_toolkits.mplot3d import Axes3D
 
-import loadDataOfDate as priceMapLoader
 # Import R function
 import rpy2.robjects as ro
 ro.r('source("./smooth_K_impl.R")')
@@ -42,21 +41,44 @@ transformed_in_path = './data/transformed/'
 poly_in_path = './data/local_poly/'
 poly_out_path = './data/surface_map/'
 
-def localPolySmoother_main(option_type='call'):
+bw_default = 400
+
+def localPolySmoother_main(option_type='call', bandwidth=None,
+                           no_transform=False, fix_violation=True):
     files = os.listdir(transformed_in_path)
     files = [_f for _f in files if isfile(join(transformed_in_path, _f)) \
-                                 and option_type in _f]
+                                   and option_type in _f]
+    if no_transform:
+        files = [_f for _f in files if "no_trans_" in _f]
+
     files_path = [join(transformed_in_path, _f) for _f in files]
 
     # Set up R variables and run smoother
+    manual_bw = True
+    if bandwidth is None:
+        bandwidth = bw_default
+        manual_bw = False
+
     ro.globalenv['K_step'] = 1
     ro.globalenv['K_order'] = 4
+    ro.globalenv['bw'] = bandwidth
+    ro.globalenv['fix_violation'] = fix_violation
     for _f, _f_path in zip(files, files_path):
         ro.globalenv['in_path'] = _f_path
-        ro.globalenv['out_path'] = poly_in_path + _f
+
+        _out_path = poly_in_path
+        if not fix_violation:
+            _out_path += 'no_fix_'
+        if manual_bw:
+            _out_path += 'bw' + str(bandwidth) + '_'
+        _out_path += _f
+
+        ro.globalenv['out_path'] = _out_path
 
         # Slove for local smoothed high order polynomial
-        ro.r('smooth_K_impl(in_path, out_path, K_step, K_order)')
+        ro.r('smooth_K_impl(in_path, out_path, K_step, K_order, bw, fix_violation)')
+
+        print(_out_path)
 
 def nan_helper(y):
     """Helper to handle indices and logical indices of NaNs.
@@ -75,37 +97,56 @@ def nan_helper(y):
 
     return np.isnan(y), lambda z: z.nonzero()[0]
 
-def formatPoly(df_poly):
+def formatPoly(df_poly, sim=False):
     all_Ks = df_poly['x'].unique()
     all_Ks.sort()
 
     price_poly = dict()
     for _t, _df in df_poly.groupby(['t']):
-        _df_temp = pd.DataFrame(index=all_Ks, columns=['Price', 'V', 'Vk', 'Vkk'])
-        #_df_temp.fillna(0, inplace=True)
-        #price_poly[_t]
-        _df_temp.ix[_df['x'], :] = _df[['beta0', 'beta2', 'beta3', 'beta4']].values
-        _df_temp = _df_temp.astype(float)
-        for _each in ['Price', 'V', 'Vk', 'Vkk']:
-            _y = _df_temp[_each]
-            nans_idx, func_interp = nan_helper(_y)
-            _df_temp.ix[nans_idx, _each] = np.interp(func_interp(nans_idx),
-                                                     func_interp(~nans_idx),
-                                                     _y[~nans_idx])
+        _df_temp = pd.DataFrame(index=all_Ks, columns=['Price', 'Price_K', 'V', 'Vk', 'Vkk'])
+
+        # For real data, simply fill violations with 0
+        if not sim:
+            _df_temp.fillna(0, inplace=True)
+
+        _df_temp.ix[_df['x'], :] = _df[['beta0', 'beta1', 'beta2', 'beta3', 'beta4']].values
+
+        # For simulated data, interpolate violations
+        if sim:
+            _df_temp = _df_temp.astype(float)
+            for _each in ['Price', 'Price_K', 'V', 'Vk', 'Vkk']:
+                _y = _df_temp[_each]
+                nans_idx, func_interp = nan_helper(_y)
+                _df_temp.ix[nans_idx, _each] = np.interp(func_interp(nans_idx),
+                                                         func_interp(~nans_idx),
+                                                         _y[~nans_idx])
 
         price_poly[_t] = _df_temp
 
     return price_poly
 
-def formatPoly_main(option_type='call'):
+def formatPoly_main(option_type='call', bw=None, no_transform=False, sim=False):
     files = os.listdir(poly_in_path)
     files = [_f for _f in files if option_type in _f]
+    if bw is not None:
+        files = [_f for _f in files if ('bw'+str(bw)) in _f]
+    if no_transform:
+        files = [_f for _f in files if 'no_trans_' in _f]
 
     for _f in files:
+        #print(_f)
         _date_str = _f[-13:-4]
         df_poly = pd.read_csv(poly_in_path + _f)
-        d_price_poly = formatPoly(df_poly)
-        with open(poly_out_path + 'surface_poly_' + option_type + _date_str + '.pickle', 'wb') as fp:
+        d_price_poly = formatPoly(df_poly, sim)
+
+        name_str = poly_out_path + 'surface_poly_'
+        if no_transform:
+            name_str += 'no_trans_'
+        if bw is not None:
+            name_str += 'bw_' + str(bw) + '_'
+
+        name_str += option_type + _date_str + '.pickle'
+        with open(name_str, 'wb') as fp:
             pickle.dump(d_price_poly, fp)
 
 def obtainSurface_impl(d_poly, Ks, ts):
@@ -236,13 +277,19 @@ def obtainSurface_impl(d_poly, Ks, ts):
 
     return df_Price, df_V, df_Vk, df_Vkk, df_Vt, t_inters, K_inters
 
-def obtainSurface(date, Ks, ts=None, option_type='call'):
+def obtainSurface(date, Ks, ts=None, option_type='call', bw=None):
     try:
-        with open(poly_out_path + 'surface_poly_' + option_type + '_' + str(date) + '.pickle', 'rb') as fp:
+        name_str = poly_out_path + 'surface_poly_'
+        if bw is not None:
+            name_str += 'bw_' + str(bw) + '_'
+
+        name_str += option_type + '_' + str(date) + '.pickle'
+
+        with open(name_str, 'rb') as fp:
             d_poly = pickle.load(fp)
     except FileNotFoundError:
         print("No available " + option_type + " option price for date " + str(date))
-        return
+        raise FileNotFoundError
 
     return obtainSurface_impl(d_poly, Ks, ts)
 
@@ -252,64 +299,3 @@ def reduceAllZeros(df):
 
     return df
 
-def fitting_errors(option_type='call'):
-    dates = priceMapLoader.getDates(option_type)
-    err_metrics = pd.DataFrame(index=dates, columns=['N', 'MSE', 'RMSE', 'MAPE'])
-
-    for _date in dates:
-        df_real = priceMapLoader.loadDataOfDate(_date, option_type)
-        df_fitted = obtainSurface(_date, df_real.columns, df_real.index, option_type)[0]
-        # cast to interpolated area
-        df_real = df_real.ix[df_fitted.index, df_fitted.columns]
-
-        Ks = np.array(df_real.columns).astype(float)
-        MSE = 0
-        MAPE = 0
-        count = 0
-        for _t, _row in df_real.iterrows():
-            K_idx = Ks[_row.notnull()]
-            err = df_fitted.ix[_t, K_idx] - _row[K_idx]
-            count += err.notnull().sum()
-            err = err[err.notnull()]
-            MSE = MSE + np.sum(np.square(err))
-            MAPE = MAPE + np.sum(np.abs(err) / df_real.ix[_t, K_idx])
-
-        err_metrics.ix[_date, 'MSE'] = MSE / count
-        err_metrics.ix[_date, 'RMSE'] = np.sqrt(err_metrics.ix[_date, 'MSE'])
-        err_metrics.ix[_date, 'MAPE'] = MAPE / count
-        err_metrics.ix[_date, 'N'] = count
-
-    err_metrics.to_csv('./data/error_metrics_' + option_type + '.csv')
-
-    return err_metrics
-
-def plot_errors(option_type='call'):
-    df_err = pd.read_csv('./data/error_metrics_' + option_type + '.csv', index_col=0)
-    dates = pd.to_datetime(np.array([str(_date) for _date in df_err.index]))
-
-    fig, axarr = plt.subplots(3, sharex=True)
-    axarr[0].plot(dates, df_err['MSE'])
-    axarr[0].set_title('Mean Squared Error of interpolated surface')
-    axarr[0].set_ylabel('MSE')
-    axarr[1].plot(dates, df_err['RMSE'])
-    axarr[1].set_title('Root Mean Squared Error of interpolated surface')
-    axarr[1].set_ylabel('RMSE')
-    axarr[2].plot(dates, df_err['MAPE'] * 100)
-    axarr[2].set_title('Mean Absolute Percentage Error of interpolated surface')
-    axarr[2].set_ylabel('MAPE (%)')
-
-    fig.autofmt_xdate()
-    plt.show()
-
-def plotSurface(x, y, z, names, save=False, save_to="./_temp.png"):
-    x_mesh, y_mesh = np.meshgrid(np.array(x).astype(float), np.array(y).astype(float))
-    fig = plt.figure()
-    ax = fig.add_subplot(111, projection='3d')
-
-    ax.plot_surface(x_mesh, y_mesh, z.T, cmap=cm.coolwarm)
-
-    ax.set_xlabel(names[0])
-    ax.set_ylabel(names[1])
-    ax.set_zlabel(names[2])
-
-    plt.show()

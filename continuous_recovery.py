@@ -78,20 +78,24 @@ def fit_PDE(V, Vy, Vyy, Vt, c=0):
 
         Y=Vt.loc[:,y].as_matrix().reshape(-1,1)
         X=pd.concat([Vyy.loc[:,y]/nyy,Vy.loc[:,y]/ny,V.loc[:,y]/nv],axis=1).as_matrix()
-        ev=np.linalg.eigvals(X.T.dot(X))
-        conditional_number.loc[y]=max(ev)/min(ev)
         try:
+            ev=np.linalg.eigvals(X.T.dot(X))
+            conditional_number.loc[y]=max(ev)/min(ev)
             Beta=np.linalg.inv(X.T.dot(X)).dot(X.T.dot(Y))
             D[y]=Beta[0]/nyy
             a1[y]=Beta[1]/ny
             a0[y]=Beta[2]/nv
         except:
+            conditional_number.loc[y]=-np.max(conditional_number.loc[:y])
             D[y]=np.nan
             a1[y]=np.nan
             a0[y]=np.nan
     if c!=0:
-        #print(conditional_number)
-        tmp=conditional_number>conditional_number[conditional_number>0].min()*c
+        tmp=conditional_number>np.abs(conditional_number).min()*c
+        D[tmp]=np.nan
+        a1[tmp]=np.nan
+        a0[tmp]=np.nan
+        tmp=conditional_number<0
         D[tmp]=np.nan
         a1[tmp]=np.nan
         a0[tmp]=np.nan
