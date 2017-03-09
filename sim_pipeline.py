@@ -6,7 +6,7 @@ Created on Tue Feb 28 16:02:04 2017
 
 Description: pipeline for recovery from simulated option price data
 
-Require: simulated in data in .csv format, index being years to maturity,
+Require: simulated data in .csv format, index being years to maturity,
             columns being strike value
 """
 
@@ -54,9 +54,11 @@ def pipeline_run(filename, index_val, delta=1000, bandwidth=400):
     with open(data_path + filename + '_surface_poly.pickle', 'wb') as fp:
         pickle.dump(dict_poly, fp)
 
-    ts = np.arange(0.1, 2.0, 0.1) * 365
-    Ks = np.linspace(index_val - delta, index_val + delta, 100)
-    Ks_Vy2 = np.linspace(index_val - delta + 0.1, index_val + delta + 0.1, 100)
+    ts = np.arange(0, 2.1, 0.1) * 365
+    Ks = np.linspace(50, 2*index_val + 10, 100)
+    Ks_Vy2 = np.linspace(50+0.1, 2*index_val + 10 + 0.1, 100)
+    #Ks = np.linspace(index_val - delta, index_val + delta, 100)
+    #Ks_Vy2 = np.linspace(index_val - delta + 0.1, index_val + delta + 0.1, 100)
     Price, V, Vy, Vyy, Vt, t_out, K_out = interpolateSurface.obtainSurface_impl(dict_poly, Ks, ts)
     _, _ , _Vy_p, _, _, _, _ = interpolateSurface.obtainSurface_impl(dict_poly, Ks_Vy2, ts)
     Vyy_fd= pd.DataFrame((_Vy_p.values - Vy.values) / 0.1, index=Vy.index, columns=Vy.columns)

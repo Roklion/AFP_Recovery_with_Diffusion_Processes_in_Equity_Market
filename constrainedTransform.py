@@ -60,7 +60,7 @@ def transformData(df_p_mx, no_transform=False):
             # All prices must be greater than 0
             bnds = ((0, None), ) * _N
 
-            if no_constraint:
+            if not no_transform:
                 # create list of constraints
                 # first, simplified monotonically decreasing constraints
                 cons = list()
@@ -76,9 +76,9 @@ def transformData(df_p_mx, no_transform=False):
                 res = minimize(transformObj, m0, args=(_prices), method='SLSQP',
                                bounds=bnds, constraints=cons)
 
-            #print(res.fun)
+                #print(res.fun)
 
-            df_ms.ix[_t, _row_clean.index] = res.x
+                df_ms.ix[_t, _row_clean.index] = res.x
 
     return df_ms
 
